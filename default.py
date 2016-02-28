@@ -54,13 +54,13 @@ def main():
             alert('There was an error accessing Redux')
             sys.exit(-1)
         for item in data['results']['assets']:
-            listItem = xbmcgui.ListItem(item['name'] + ' - ' + item['description'])
+            list_item = xbmcgui.ListItem(item['name'] + ' - ' + item['description'])
             d = {'key': item['key'],
                  'reference': item['reference'],
                  'token': token,
                  'mode': 'play'}
             xbmcplugin.addDirectoryItem(addon_handle,
-                                        base_url + '?' + urlencode(d), listItem)
+                                        base_url + '?' + urlencode(d), list_item)
         xbmcplugin.endOfDirectory(addon_handle)
 
     elif mode[0] == 'play':
