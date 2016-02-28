@@ -3,7 +3,6 @@ from urllib import urlencode
 from urllib2 import urlopen, HTTPError
 from urlparse import parse_qs
 
-
 API_URL = 'https://i.bbcredux.com'
 formatMap = {'Original stream': 'ts',
              'Stripped stream': 'strip',
@@ -20,7 +19,8 @@ def login(username, password):
     try:
         data = json.loads(urlopen(url=API_URL + '/user/login?' + urlencode(
             {'username': username, 'password': password})).read())
-        if data['success']: return data['token']
+        if data['success']:
+            return data['token']
     except HTTPError:
         alert('Wrong username or password')
     sys.exit(-1)
@@ -29,7 +29,8 @@ def login(username, password):
 def search_dialog():
     kb = xbmc.Keyboard('', 'Search for')
     kb.doModal()
-    if not kb.isConfirmed(): return None;
+    if not kb.isConfirmed():
+        return None
     searchterm = kb.getText().strip()
     return searchterm
 
@@ -39,6 +40,9 @@ def main():
     addon_handle = int(sys.argv[1])
     args = parse_qs(sys.argv[2][1:])
     mode = args.get('mode', None)
+    offset = int(args.get('offset', ['0'])[0])
+    query = args.get('query', [None])[0]
+    token = args.get('token', [None])[0]
 
     addon = xbmcaddon.Addon()
     username = addon.getSetting('username')
@@ -46,21 +50,44 @@ def main():
     stream_format = addon.getSetting('format')
 
     if mode is None:
-        token = login(username, password)
+        if not token:
+            token = login(username, password)
+        if not query:
+            query = search_dialog()
         try:
             data = json.loads(urlopen(API_URL + '/asset/search?' + urlencode(
-                {'q': search_dialog(), 'titleonly': '1', 'token': token})).read())
+                {
+                    'q': query,
+                    'titleonly': '1',
+                    'token': token,
+                    'offset': offset
+                }
+            )).read())
         except HTTPError:
             alert('There was an error accessing Redux')
             sys.exit(-1)
-        for item in data['results']['assets']:
-            list_item = xbmcgui.ListItem(item['name'] + ' - ' + item['description'])
-            d = {'key': item['key'],
-                 'reference': item['reference'],
-                 'token': token,
-                 'mode': 'play'}
-            xbmcplugin.addDirectoryItem(addon_handle,
-                                        base_url + '?' + urlencode(d), list_item)
+        response_offset = int(data['offset'])
+        if data.get('results'):
+            for item in data['results']['assets']:
+                list_item = xbmcgui.ListItem(item['name'] + ' - ' + item['description'])
+                d = {'key': item['key'],
+                     'reference': item['reference'],
+                     'token': token,
+                     'mode': 'play'}
+                xbmcplugin.addDirectoryItem(addon_handle,
+                                            base_url + '?' + urlencode(d), list_item)
+            if data['total_returned'] + 10 * response_offset < data['total_found']:
+                next_page = xbmcgui.ListItem('Next Page')
+                xbmcplugin.addDirectoryItem(
+                    addon_handle,
+                    base_url + '?' + urlencode({
+                        'offset': response_offset + 1,
+                        'query': query,
+                        'token': token,
+                    }),
+                    next_page,
+                    isFolder=True
+                )
         xbmcplugin.endOfDirectory(addon_handle)
 
     elif mode[0] == 'play':
