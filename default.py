@@ -48,6 +48,7 @@ def get_arguments():
     arguments = {
         'addon_url': sys.argv[0],
         'addon_handle': int(sys.argv[1]),
+        'mode': 'display_search_results'
     }
     arguments.update(extra_args)
     return arguments
@@ -164,13 +165,16 @@ def display_search_results(args):
             )
     xbmcplugin.endOfDirectory(addon_handle)
 
+mode_mapping = {
+    'play': play_video,
+    'display_search_results': display_search_results
+}
+
 
 def main():
     args = get_arguments()
-    if args.get('mode') == 'play':
-        play_video(args)
-    else:
-        display_search_results(args)
+    mode = args.get('mode')
+    mode_mapping[mode](args)
 
 
 if __name__ == '__main__':
