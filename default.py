@@ -1,9 +1,14 @@
-import sys, xbmc, xbmcplugin, xbmcgui, xbmcaddon, json
+import json
+import sys
+import xbmc
+import xbmcaddon
+import xbmcgui
+import xbmcplugin
 from urllib import urlencode
 from urllib2 import urlopen, HTTPError
 from urlparse import parse_qsl
 
-API_URL = 'https://i.bbcredux.com'
+API_URL = 'https://i.bbcredux.com/{action}?{params}'
 formatMap = {'Original stream': 'ts',
              'Stripped stream': 'strip',
              'H264 large': 'h264_mp4_hi_v1.1',
@@ -15,15 +20,33 @@ def alert(message):
     xbmcgui.Dialog().ok('Error', message)
 
 
-def get_token(username, password):
+def get_new_token():
+    addon = xbmcaddon.Addon()
+    settings = get_addon_settings()
+    username = settings['username']
+    password = settings['password']
     try:
-        data = json.loads(urlopen(url=API_URL + '/user/login?' + urlencode(
-            {'username': username, 'password': password})).read())
+        url = API_URL.format(
+            action='/user/login',
+            params=urlencode({'username': username, 'password': password})
+        )
+        data = json.loads(urlopen(url).read())
         if data['success']:
-            return data['token']
+            token = data['token']
+            addon.setSetting('token', token)
+            return token
     except HTTPError:
         alert('Wrong username or password')
         sys.exit(-1)
+
+
+def get_token():
+    settings = get_addon_settings()
+    settings_token = settings.get('token')
+    if settings_token is not '':
+        return settings_token
+    else:
+        return get_new_token()
 
 
 def search_dialog():
@@ -45,6 +68,7 @@ def get_arguments():
     arguments = {
         'addon_url': sys.argv[0],
         'addon_handle': int(sys.argv[1]),
+        'mode': 'display_search_results'
     }
     arguments.update(extra_args)
     return arguments
@@ -55,6 +79,7 @@ def get_addon_settings():
     return {
         'username': addon.getSetting('username'),
         'password': addon.getSetting('password'),
+        'token': addon.getSetting('token'),
         'format': addon.getSetting('format'),
         'num_results': int(addon.getSetting('results_per_page'))
     }
@@ -70,20 +95,18 @@ def add_dir_item(handle, addon_url, item, folder=False, **data):
 
 
 def search(query, offset, token, num_results=10):
-    try:
-        data = json.loads(urlopen(API_URL + '/asset/search?' + urlencode(
-            {
-                'q': query,
-                'titleonly': '1',
-                'token': token,
-                'offset': offset,
-                'limit': num_results
-            }
-        )).read())
-    except HTTPError:
-        alert('There was an error accessing Redux')
-        sys.exit(-1)
-    return data
+    url = API_URL.format(
+        action='asset/search',
+        params=urlencode({
+            'q': query,
+            'titleonly': '1',
+            'token': token,
+            'offset': offset,
+            'limit': num_results,
+            'repeats': 0
+        })
+    )
+    return json.loads(urlopen(url).read())
 
 
 def parse_results(results):
@@ -107,9 +130,13 @@ def play_video(args):
     stream_format = settings['format']
     reference = args.get('reference')
     key = args.get('key')
-    xbmc.Player(xbmc.PLAYER_CORE_MPLAYER).play(
-        API_URL + '/asset/media/' + reference + '/' + key + '/' + formatMap[
-            stream_format] + '/file')
+    action = 'asset/media/{reference}/{key}/{stream_format}/file'.format(
+        reference=reference,
+        key=key,
+        stream_format=formatMap[stream_format]
+    )
+    media_url = API_URL.format(action=action, params='')
+    xbmc.Player(xbmc.PLAYER_CORE_MPLAYER).play(media_url)
 
 
 def display_search_results(args):
@@ -117,18 +144,24 @@ def display_search_results(args):
     addon_url = args['addon_url']
     settings = get_addon_settings()
     results_per_page = settings['num_results']
-    token = args.get(
-        'token',
-        get_token(settings['username'], settings['password'])
-    )
-
     query = args.get('query')
     if query is None:
         query = search_dialog()
     if query is None:
         sys.exit(0)
+    token = get_token()
 
-    response = search(query, args.get('offset'), token, results_per_page)
+    def search_callable():
+        return search(query, args.get('offset'), token, results_per_page)
+    try:
+        response = search_callable()
+    except HTTPError, e:
+        if e.code == 403:
+            token = get_new_token()
+            response = search_callable()
+        else:
+            alert('There was an error accessing Redux')
+            sys.exit(-1)
     results = response.get('results')
     if results:
         for item in parse_results(results):
@@ -157,13 +190,16 @@ def display_search_results(args):
             )
     xbmcplugin.endOfDirectory(addon_handle)
 
+mode_mapping = {
+    'play': play_video,
+    'display_search_results': display_search_results
+}
+
 
 def main():
     args = get_arguments()
-    if args.get('mode') == 'play':
-        play_video(args)
-    else:
-        display_search_results(args)
+    mode = args['mode']
+    mode_mapping[mode](args)
 
 
 if __name__ == '__main__':
