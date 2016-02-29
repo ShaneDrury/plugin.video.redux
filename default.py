@@ -3,7 +3,7 @@ from urllib import urlencode
 from urllib2 import urlopen, HTTPError
 from urlparse import parse_qsl
 
-API_URL = 'https://i.bbcredux.com'
+API_URL = 'https://i.bbcredux.com/{action}?{params}'
 formatMap = {'Original stream': 'ts',
              'Stripped stream': 'strip',
              'H264 large': 'h264_mp4_hi_v1.1',
@@ -17,8 +17,11 @@ def alert(message):
 
 def get_token(username, password):
     try:
-        data = json.loads(urlopen(url=API_URL + '/user/login?' + urlencode(
-            {'username': username, 'password': password})).read())
+        url = API_URL.format(
+            action='/user/login',
+            params=urlencode({'username': username, 'password': password})
+        )
+        data = json.loads(urlopen(url).read())
         if data['success']:
             return data['token']
     except HTTPError:
@@ -71,15 +74,17 @@ def add_dir_item(handle, addon_url, item, folder=False, **data):
 
 def search(query, offset, token, num_results=10):
     try:
-        data = json.loads(urlopen(API_URL + '/asset/search?' + urlencode(
-            {
+        url = API_URL.format(
+            action='asset/search',
+            params=urlencode({
                 'q': query,
                 'titleonly': '1',
                 'token': token,
                 'offset': offset,
                 'limit': num_results
-            }
-        )).read())
+            })
+        )
+        data = json.loads(urlopen(url).read())
     except HTTPError:
         alert('There was an error accessing Redux')
         sys.exit(-1)
@@ -107,9 +112,13 @@ def play_video(args):
     stream_format = settings['format']
     reference = args.get('reference')
     key = args.get('key')
-    xbmc.Player(xbmc.PLAYER_CORE_MPLAYER).play(
-        API_URL + '/asset/media/' + reference + '/' + key + '/' + formatMap[
-            stream_format] + '/file')
+    action = 'asset/media/{reference}/{key}/{stream_format}/file'.format(
+        reference=reference,
+        key=key,
+        stream_format=formatMap[stream_format]
+    )
+    media_url = API_URL.format(action=action, params='')
+    xbmc.Player(xbmc.PLAYER_CORE_MPLAYER).play(media_url)
 
 
 def display_search_results(args):
