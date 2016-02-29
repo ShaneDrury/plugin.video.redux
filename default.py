@@ -1,5 +1,4 @@
 import json
-import os
 import sys
 import xbmc
 import xbmcaddon
@@ -23,24 +22,13 @@ def alert(message):
     xbmcgui.Dialog().ok('Error', message)
 
 
-def get_thumb_dir():
-    base_path = ADDON.getAddonInfo("path")
-    return os.path.join(base_path, 'resources', 'media')
-
-
-def get_or_download_thumb(item):
-    filename = item['uuid'] + '-640.jpg'
-    thumb_dir = get_thumb_dir()
-    file_path = os.path.join(thumb_dir, filename)
-    if os.path.isfile(file_path):
-        return file_path
-    else:
-        url = API_URL.format(
-            action=item['thumb_url'],
-            params=''
-        )
-    logging.error(url)
-    return url
+def get_thumb_url(item, token):
+    return API_URL.format(
+        action=item['thumb_url'],
+        params=urlencode({
+            'token': token
+        })
+    )
 
 
 def get_new_token():
@@ -169,6 +157,7 @@ def play_video(args):
     xbmc.Player(xbmc.PLAYER_CORE_MPLAYER).play(media_url)
 import logging
 
+
 def display_search_results(args):
     addon_handle = args['addon_handle']
     addon_url = args['addon_url']
@@ -200,9 +189,8 @@ def display_search_results(args):
                 description=item['description']
             )
             list_item = xbmcgui.ListItem(title)
-            thumb = get_or_download_thumb(item)
+            thumb = get_thumb_url(item, token)
             list_item.setThumbnailImage(thumb)
-            get_or_download_thumb(item)
             add_dir_item(
                 addon_handle, addon_url, list_item, folder=True,
                 key=item['key'],
