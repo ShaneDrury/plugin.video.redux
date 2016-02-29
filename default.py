@@ -1,4 +1,9 @@
-import sys, xbmc, xbmcplugin, xbmcgui, xbmcaddon, json
+import json
+import sys
+import xbmc
+import xbmcaddon
+import xbmcgui
+import xbmcplugin
 from urllib import urlencode
 from urllib2 import urlopen, HTTPError
 from urlparse import parse_qsl
@@ -15,7 +20,11 @@ def alert(message):
     xbmcgui.Dialog().ok('Error', message)
 
 
-def get_token(username, password):
+def get_new_token():
+    addon = xbmcaddon.Addon()
+    settings = get_addon_settings()
+    username = settings['username']
+    password = settings['password']
     try:
         url = API_URL.format(
             action='/user/login',
@@ -23,10 +32,21 @@ def get_token(username, password):
         )
         data = json.loads(urlopen(url).read())
         if data['success']:
-            return data['token']
+            token = data['token']
+            addon.setSetting('token', token)
+            return token
     except HTTPError:
         alert('Wrong username or password')
         sys.exit(-1)
+
+
+def get_token():
+    settings = get_addon_settings()
+    settings_token = settings.get('token')
+    if settings_token is not '':
+        return settings_token
+    else:
+        return get_new_token()
 
 
 def search_dialog():
@@ -59,6 +79,7 @@ def get_addon_settings():
     return {
         'username': addon.getSetting('username'),
         'password': addon.getSetting('password'),
+        'token': addon.getSetting('token'),
         'format': addon.getSetting('format'),
         'num_results': int(addon.getSetting('results_per_page'))
     }
@@ -86,7 +107,7 @@ def search(query, offset, token, num_results=10):
     )
     try:
         data = json.loads(urlopen(url).read())
-    except HTTPError:
+    except HTTPError, e:
         alert('There was an error accessing Redux')
         sys.exit(-1)
     return data
@@ -127,16 +148,24 @@ def display_search_results(args):
     addon_url = args['addon_url']
     settings = get_addon_settings()
     results_per_page = settings['num_results']
-    token = args.get('token')
-    if token is None:
-        token = get_token(settings['username'], settings['password'])
     query = args.get('query')
     if query is None:
         query = search_dialog()
     if query is None:
         sys.exit(0)
+    token = get_token()
 
-    response = search(query, args.get('offset'), token, results_per_page)
+    def search_callable():
+        return search(query, args.get('offset'), token, results_per_page)
+    try:
+        response = search_callable()
+    except HTTPError, e:
+        if e.code == 403:
+            token = get_new_token()
+            response = search_callable()
+        else:
+            alert('There was an error accessing Redux')
+            sys.exit(-1)
     results = response.get('results')
     if results:
         for item in parse_results(results):
@@ -173,7 +202,7 @@ mode_mapping = {
 
 def main():
     args = get_arguments()
-    mode = args.get('mode')
+    mode = args['mode']
     mode_mapping[mode](args)
 
 
