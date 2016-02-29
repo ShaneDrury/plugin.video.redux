@@ -55,7 +55,8 @@ def get_addon_settings():
     return {
         'username': addon.getSetting('username'),
         'password': addon.getSetting('password'),
-        'format': addon.getSetting('format')
+        'format': addon.getSetting('format'),
+        'num_results': int(addon.getSetting('results_per_page'))
     }
 
 
@@ -68,14 +69,15 @@ def add_dir_item(handle, addon_url, item, folder=False, **data):
     )
 
 
-def search(query, offset, token):
+def search(query, offset, token, num_results=10):
     try:
         data = json.loads(urlopen(API_URL + '/asset/search?' + urlencode(
             {
                 'q': query,
                 'titleonly': '1',
                 'token': token,
-                'offset': offset
+                'offset': offset,
+                'limit': num_results
             }
         )).read())
     except HTTPError:
@@ -96,8 +98,8 @@ def parse_results(results):
     ]
 
 
-def should_display_next_results(response, offset):
-    return response['total_returned'] + 10 * offset < response['total_found']
+def should_display_next_results(response, offset, num_results=10):
+    return response['total_returned'] + num_results * offset < response['total_found']
 
 
 def play_video(args):
@@ -114,6 +116,7 @@ def display_search_results(args):
     addon_handle = args['addon_handle']
     addon_url = args['addon_url']
     settings = get_addon_settings()
+    results_per_page = settings['num_results']
     token = args.get(
         'token',
         get_token(settings['username'], settings['password'])
@@ -125,7 +128,7 @@ def display_search_results(args):
     if query is None:
         sys.exit(0)
 
-    response = search(query, args.get('offset'), token)
+    response = search(query, args.get('offset'), token, results_per_page)
     results = response.get('results')
     if results:
         for item in parse_results(results):
@@ -141,7 +144,7 @@ def display_search_results(args):
                 token=token,
                 mode='play'
             )
-        if should_display_next_results(response, args['offset']):
+        if should_display_next_results(response, args['offset'], results_per_page):
             next_page = xbmcgui.ListItem('Next Page')
             add_dir_item(
                 addon_handle,
