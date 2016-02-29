@@ -106,12 +106,7 @@ def search(query, offset, token, num_results=10):
             'repeats': 0
         })
     )
-    try:
-        data = json.loads(urlopen(url).read())
-    except HTTPError, e:
-        alert('There was an error accessing Redux')
-        sys.exit(-1)
-    return data
+    return json.loads(urlopen(url).read())
 
 
 def parse_results(results):
