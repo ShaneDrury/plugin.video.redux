@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import xbmc
 import xbmcaddon
@@ -8,6 +9,8 @@ from urllib import urlencode
 from urllib2 import urlopen, HTTPError
 from urlparse import parse_qsl
 
+
+ADDON = xbmcaddon.Addon()
 API_URL = 'https://i.bbcredux.com/{action}?{params}'
 formatMap = {'Original stream': 'ts',
              'Stripped stream': 'strip',
@@ -20,20 +23,39 @@ def alert(message):
     xbmcgui.Dialog().ok('Error', message)
 
 
+def get_thumb_dir():
+    base_path = ADDON.getAddonInfo("path")
+    return os.path.join(base_path, 'resources', 'media')
+
+
+def get_or_download_thumb(item):
+    filename = item['uuid'] + '-640.jpg'
+    thumb_dir = get_thumb_dir()
+    file_path = os.path.join(thumb_dir, filename)
+    if os.path.isfile(file_path):
+        return file_path
+    else:
+        url = API_URL.format(
+            action=item['thumb_url'],
+            params=''
+        )
+    logging.error(url)
+    return url
+
+
 def get_new_token():
-    addon = xbmcaddon.Addon()
     settings = get_addon_settings()
     username = settings['username']
     password = settings['password']
     try:
         url = API_URL.format(
-            action='/user/login',
+            action='user/login',
             params=urlencode({'username': username, 'password': password})
         )
         data = json.loads(urlopen(url).read())
         if data['success']:
             token = data['token']
-            addon.setSetting('token', token)
+            ADDON.setSetting('token', token)
             return token
     except HTTPError:
         alert('Wrong username or password')
@@ -75,13 +97,12 @@ def get_arguments():
 
 
 def get_addon_settings():
-    addon = xbmcaddon.Addon()
     return {
-        'username': addon.getSetting('username'),
-        'password': addon.getSetting('password'),
-        'token': addon.getSetting('token'),
-        'format': addon.getSetting('format'),
-        'num_results': int(addon.getSetting('results_per_page'))
+        'username': ADDON.getSetting('username'),
+        'password': ADDON.getSetting('password'),
+        'token': ADDON.getSetting('token'),
+        'format': ADDON.getSetting('format'),
+        'num_results': int(ADDON.getSetting('results_per_page'))
     }
 
 
@@ -109,6 +130,13 @@ def search(query, offset, token, num_results=10):
     return json.loads(urlopen(url).read())
 
 
+def build_thumb_url(item):
+    return 'asset/media/{reference}/{key}/JPEG-640x/image.jpg'.format(
+        reference=item['reference'],
+        key=item['key']
+    )
+
+
 def parse_results(results):
     return [
         {
@@ -116,6 +144,8 @@ def parse_results(results):
             'description': item['description'],
             'key': item['key'],
             'reference': item['reference'],
+            'thumb_url': build_thumb_url(item),
+            'uuid': item['uuid']
         }
         for item in results['assets']
     ]
@@ -137,7 +167,7 @@ def play_video(args):
     )
     media_url = API_URL.format(action=action, params='')
     xbmc.Player(xbmc.PLAYER_CORE_MPLAYER).play(media_url)
-
+import logging
 
 def display_search_results(args):
     addon_handle = args['addon_handle']
@@ -170,6 +200,9 @@ def display_search_results(args):
                 description=item['description']
             )
             list_item = xbmcgui.ListItem(title)
+            thumb = get_or_download_thumb(item)
+            list_item.setThumbnailImage(thumb)
+            get_or_download_thumb(item)
             add_dir_item(
                 addon_handle, addon_url, list_item, folder=True,
                 key=item['key'],
