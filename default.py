@@ -102,7 +102,8 @@ def search(query, offset, token, num_results=10):
             'titleonly': '1',
             'token': token,
             'offset': offset,
-            'limit': num_results
+            'limit': num_results,
+            'repeats': 0
         })
     )
     try:
