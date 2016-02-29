@@ -73,17 +73,17 @@ def add_dir_item(handle, addon_url, item, folder=False, **data):
 
 
 def search(query, offset, token, num_results=10):
+    url = API_URL.format(
+        action='asset/search',
+        params=urlencode({
+            'q': query,
+            'titleonly': '1',
+            'token': token,
+            'offset': offset,
+            'limit': num_results
+        })
+    )
     try:
-        url = API_URL.format(
-            action='asset/search',
-            params=urlencode({
-                'q': query,
-                'titleonly': '1',
-                'token': token,
-                'offset': offset,
-                'limit': num_results
-            })
-        )
         data = json.loads(urlopen(url).read())
     except HTTPError:
         alert('There was an error accessing Redux')
@@ -126,11 +126,9 @@ def display_search_results(args):
     addon_url = args['addon_url']
     settings = get_addon_settings()
     results_per_page = settings['num_results']
-    token = args.get(
-        'token',
-        get_token(settings['username'], settings['password'])
-    )
-
+    token = args.get('token')
+    if token is None:
+        token = get_token(settings['username'], settings['password'])
     query = args.get('query')
     if query is None:
         query = search_dialog()
